@@ -36,6 +36,9 @@ jobs:
           tflint_version: v0.64.0
 
       - name: tflint
+        env:
+          # Unauthenticated plugin downloads share the runner IP's API rate limit.
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           tflint --init
           tflint --recursive
