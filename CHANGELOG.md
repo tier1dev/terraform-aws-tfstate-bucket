@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-04
+
+### Added
+
+- Optional `region` input, passed to the bucket and all of its configuration,
+  so one provider configuration can create buckets in several regions.
+- README section on a `<company>/<app>/<environment or workspace>/<name>.tfstate`
+  key layout, with backend blocks for stacks with and without workspaces.
+
+### Changed
+
+- The example is now `examples/per-environment-and-region` and creates one
+  bucket per environment per region.
+
 ## [0.1.0] - 2026-10-04
 
 ### Added

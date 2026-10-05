@@ -5,11 +5,13 @@
 #trivy:ignore:AVD-AWS-0089 server access logs can only go to a bucket in the same account, and CloudTrail data events cover the audit need
 resource "aws_s3_bucket" "this" {
   bucket = var.bucket_name
+  region = var.region
   tags   = var.tags
 }
 
 resource "aws_s3_bucket_versioning" "this" {
   bucket = aws_s3_bucket.this.id
+  region = var.region
 
   versioning_configuration {
     status = "Enabled"
@@ -19,6 +21,7 @@ resource "aws_s3_bucket_versioning" "this" {
 #trivy:ignore:AVD-AWS-0132 SSE-S3 is deliberate: a customer managed key bills per key every month
 resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
   bucket = aws_s3_bucket.this.id
+  region = var.region
 
   rule {
     apply_server_side_encryption_by_default {
@@ -29,6 +32,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "this" {
 
 resource "aws_s3_bucket_public_access_block" "this" {
   bucket = aws_s3_bucket.this.id
+  region = var.region
 
   block_public_acls       = true
   block_public_policy     = true
@@ -38,6 +42,7 @@ resource "aws_s3_bucket_public_access_block" "this" {
 
 resource "aws_s3_bucket_ownership_controls" "this" {
   bucket = aws_s3_bucket.this.id
+  region = var.region
 
   rule {
     object_ownership = "BucketOwnerEnforced"
@@ -46,6 +51,7 @@ resource "aws_s3_bucket_ownership_controls" "this" {
 
 resource "aws_s3_bucket_policy" "this" {
   bucket = aws_s3_bucket.this.id
+  region = var.region
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -72,6 +78,7 @@ resource "aws_s3_bucket_policy" "this" {
 # five superseded versions are kept however old they are.
 resource "aws_s3_bucket_lifecycle_configuration" "this" {
   bucket = aws_s3_bucket.this.id
+  region = var.region
 
   rule {
     id     = "expire-superseded-state"

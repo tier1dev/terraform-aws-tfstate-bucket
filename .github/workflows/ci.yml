@@ -23,7 +23,7 @@ jobs:
 
       - name: terraform validate
         run: |
-          for dir in . examples/per-environment; do
+          for dir in . examples/per-environment-and-region; do
             terraform -chdir="$dir" init -backend=false -input=false
             terraform -chdir="$dir" validate
           done

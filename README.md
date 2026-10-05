@@ -3,9 +3,10 @@
 One S3 bucket for Terraform state, locked with S3 native lockfiles instead of a
 DynamoDB table.
 
-Call it once per bucket. If you keep state for several environments in one
-account, call it with `for_each` and get one bucket per environment, so a role
-that can write dev state has no path to prod state.
+Call it once per bucket. If you keep state for several environments and
+regions in one account, call it with `for_each` and get one bucket for each
+pair, so a role that can write dev state has no path to prod state and a
+regional S3 outage only blocks applies for stacks in that region.
 
 ## Prerequisites
 
@@ -17,41 +18,92 @@ that can write dev state has no path to prod state.
 
 ## Usage
 
-```hcl
-module "state_bucket" {
-  source   = "git::https://github.com/tier1dev/terraform-aws-tfstate-bucket.git?ref=v0.1.0"
-  for_each = toset(["dev", "prod", "core", "common"])
+Four environments in two regions is eight buckets from one module block and
+one provider configuration:
 
-  bucket_name = "example-tfstate-${each.key}-123456789012"
+```hcl
+locals {
+  environments = ["dev", "prod", "core", "common"]
+  regions      = ["us-east-1", "us-west-2"]
+
+  buckets = {
+    for pair in setproduct(local.environments, local.regions) :
+    "${pair[0]}/${pair[1]}" => { environment = pair[0], region = pair[1] }
+  }
+}
+
+module "state_bucket" {
+  source   = "git::https://github.com/tier1dev/terraform-aws-tfstate-bucket.git?ref=v0.2.0"
+  for_each = local.buckets
+
+  bucket_name = "example-tfstate-${each.value.environment}-123456789012-${each.value.region}"
+  region      = each.value.region
 
   tags = {
     Customer    = "example"
     Application = "terraform-state"
-    Environment = each.key
+    Environment = each.value.environment
     Owner       = "platform@example.com"
     Costcenter  = "platform"
   }
 }
 ```
 
-A runnable version is in [`examples/per-environment`](examples/per-environment).
+A runnable version is in
+[`examples/per-environment-and-region`](examples/per-environment-and-region).
+Leave `region` unset to create a single bucket in the provider's region.
 
-Then point a stack at one of the buckets:
+The stack that creates the buckets has nowhere to store its own state on the
+first run. Apply it with local state, add a backend block pointing at one of
+the new buckets, then run `terraform init -migrate-state`.
+
+## State key layout
+
+The module doesn't enforce a key layout, but one bucket serves many stacks, so
+pick a layout before the first stack lands. This one works when the buckets
+hold state for more than one company:
+
+```text
+<company>/<app>/<environment or workspace>/<name>.tfstate
+```
+
+A stack that doesn't use workspaces writes the whole path as its key:
 
 ```hcl
 terraform {
   backend "s3" {
-    bucket       = "example-tfstate-prod-123456789012"
-    key          = "my-app/terraform.tfstate"
+    bucket       = "example-tfstate-prod-123456789012-us-east-1"
+    key          = "acme/billing-api/prod/terraform.tfstate"
     region       = "us-east-1"
     use_lockfile = true
   }
 }
 ```
 
-The stack that creates the buckets has nowhere to store its own state on the
-first run. Apply it with local state, add a backend block pointing at one of
-the new buckets, then run `terraform init -migrate-state`.
+A stack that uses workspaces, where the workspace name is the environment,
+gets the same path by moving the company and app into `workspace_key_prefix`:
+
+```hcl
+terraform {
+  backend "s3" {
+    bucket               = "example-tfstate-prod-123456789012-us-east-1"
+    workspace_key_prefix = "acme/billing-api"
+    key                  = "terraform.tfstate"
+    region               = "us-east-1"
+    use_lockfile         = true
+  }
+}
+```
+
+Terraform stores a named workspace at `<workspace_key_prefix>/<workspace>/<key>`,
+so the `prod` workspace lands on `acme/billing-api/prod/terraform.tfstate`. The
+`default` workspace ignores the prefix and writes `terraform.tfstate` at the
+bucket root, where every other stack doing the same would collide with it.
+Always select a named workspace with this form.
+
+An app with several stacks gives each its own file name in the same directory,
+for example `acme/billing-api/prod/data.tfstate` and
+`acme/billing-api/prod/backend.tfstate`.
 
 ## What you get
 
@@ -65,9 +117,10 @@ The five newest superseded versions of each object are kept however old they
 are, so a stack that is applied once a year still has rollback copies.
 
 The module adds no cross-account access. Grant it with IAM in the account that
-owns the bucket. A role limited to one state key needs `s3:GetObject` and
-`s3:PutObject` on `<key>`, those two plus `s3:DeleteObject` on `<key>.tflock`,
-and `s3:ListBucket` on the bucket.
+owns the bucket. With the key layout above, a role for one app is scoped to
+`<company>/<app>/*`: `s3:GetObject`, `s3:PutObject` and `s3:DeleteObject` on
+that prefix (the delete is for the `.tflock` files), and `s3:ListBucket` on the
+bucket with an `s3:prefix` condition for the same prefix.
 
 ## Cost
 
@@ -125,6 +178,7 @@ No modules.
 |------|-------------|------|---------|:--------:|
 | <a name="input_bucket_name"></a> [bucket\_name](#input\_bucket\_name) | Name of the state bucket. It is written into every backend block that uses it, so choose it once. Dots are rejected because they break TLS on virtual-hosted S3 endpoints. | `string` | n/a | yes |
 | <a name="input_noncurrent_version_expiration_days"></a> [noncurrent\_version\_expiration\_days](#input\_noncurrent\_version\_expiration\_days) | Days a superseded state version is kept before it expires. The five newest superseded versions of each object are kept regardless of age. | `number` | `90` | no |
+| <a name="input_region"></a> [region](#input\_region) | Region the bucket is created in. Null uses the provider's region. Set it to create buckets in several regions from one provider configuration. | `string` | `null` | no |
 | <a name="input_tags"></a> [tags](#input\_tags) | Tags applied to the bucket. | `map(string)` | `{}` | no |
 
 ## Outputs

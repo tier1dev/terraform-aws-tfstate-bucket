@@ -24,3 +24,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "region" {
+  description = "Region the bucket is created in. Null uses the provider's region. Set it to create buckets in several regions from one provider configuration."
+  type        = string
+  default     = null
+}

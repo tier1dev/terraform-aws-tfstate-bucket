@@ -124,3 +124,31 @@ run "rejects_zero_day_version_expiry" {
 
   expect_failures = [var.noncurrent_version_expiration_days]
 }
+
+run "creates_every_resource_in_the_requested_region" {
+  command = apply
+
+  variables {
+    region = "us-west-2"
+  }
+
+  assert {
+    condition = alltrue([
+      for region in [
+        aws_s3_bucket.this.region,
+        aws_s3_bucket_versioning.this.region,
+        aws_s3_bucket_server_side_encryption_configuration.this.region,
+        aws_s3_bucket_public_access_block.this.region,
+        aws_s3_bucket_ownership_controls.this.region,
+        aws_s3_bucket_policy.this.region,
+        aws_s3_bucket_lifecycle_configuration.this.region,
+      ] : region == "us-west-2"
+    ])
+    error_message = "The bucket and all of its configuration must be created in var.region."
+  }
+
+  assert {
+    condition     = output.bucket_region == "us-west-2"
+    error_message = "The bucket_region output must report var.region."
+  }
+}
